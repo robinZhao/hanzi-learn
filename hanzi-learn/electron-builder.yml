@@ -1,0 +1,25 @@
+appId: com.hanzilearn.app
+productName: 汉字学习
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+extraResources:
+  - from: resources/
+    to: ''
+win:
+  executableName: hanzi-learn
+  sign: null
+  target:
+    - nsis
+    - dir
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: 汉字学习
+  uninstallDisplayName: 汉字学习
+  oneClick: false
+  allowToChangeInstallationDirectory: true

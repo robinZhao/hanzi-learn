@@ -1,0 +1,38 @@
+{
+  "name": "hanzi-learn",
+  "version": "1.0.0",
+  "description": "汉字学习桌面应用 - 记录和学习不认识的汉字",
+  "main": "./out/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "better-sqlite3": "^11.10.0",
+    "element-plus": "^2.9.1",
+    "hanzi-writer": "^3.5.2",
+    "hanzi-writer-data": "^2.0.1",
+    "pinia": "^2.3.0",
+    "pinyin-pro": "^3.26.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@types/better-sqlite3": "^7.6.12",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^31.7.5",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "sass": "^1.83.0",
+    "typescript": "^5.7.3",
+    "vue-tsc": "^2.1.10"
+  }
+}
