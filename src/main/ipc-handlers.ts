@@ -31,8 +31,13 @@ import {
   getUserSentences,
   deleteUserSentence,
   exportCollection,
-  importCollection
+  importCollection,
+  setTags,
+  toggleBacking,
+  listByTag,
+  getBackingCards
 } from './services/user-collection.service'
+import { importFromXlsx, exportToXlsx } from './services/xlsx-import.service'
 
 export function registerIpcHandlers(): void {
   // Character
@@ -85,6 +90,7 @@ export function registerIpcHandlers(): void {
 
   // Learning
   ipcMain.handle('learning:getDueCards', (_, limit?: number) => getDueCards(limit))
+  ipcMain.handle('learning:getBackingCards', (_, limit?: number) => getBackingCards(limit))
   ipcMain.handle('learning:submitReview', (_, userCharId: number, rating: number) =>
     submitReview(userCharId, rating)
   )
@@ -112,6 +118,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('collection:export', () => exportCollection())
   ipcMain.handle('collection:import', (_, data: any, mode: 'merge' | 'replace') =>
     importCollection(data, mode)
+  )
+
+  // Collection Excel import/export
+  ipcMain.handle('collection:importXlsx', (_, filePath: string) => importFromXlsx(filePath))
+  ipcMain.handle('collection:exportXlsx', () => {
+    const { app } = require('electron')
+    const { join } = require('path')
+    const date = new Date().toISOString().slice(0, 10)
+    const outPath = join(app.getPath('desktop'), `识字导出-${date}.xlsx`)
+    exportToXlsx(outPath)
+    return outPath
+  })
+
+  // Collection tag management
+  ipcMain.handle('collection:setTags', (_, characterId: number, tags: string[]) =>
+    setTags(characterId, tags)
+  )
+  ipcMain.handle('collection:toggleBacking', (_, characterId: number) =>
+    toggleBacking(characterId)
+  )
+  ipcMain.handle('collection:listByTag', (_, tag: string, sortBy?: string, sortDir?: string, limit?: number, offset?: number) =>
+    listByTag(tag, sortBy, sortDir, limit, offset)
   )
 
   // Window controls

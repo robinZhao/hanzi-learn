@@ -3,7 +3,7 @@ import { ref } from 'vue'
 
 export const useCollectionStore = defineStore('collection', () => {
   const characters = ref<any[]>([])
-  const stats = ref({ total: 0, new_count: 0, learning: 0, mastered: 0, due_today: 0 })
+  const stats = ref({ total: 0, learning: 0, mastered: 0 })
   const loading = ref(false)
 
   async function fetchList(
@@ -48,5 +48,13 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
-  return { characters, stats, loading, fetchList, fetchStats, addCharacter, removeCharacter, fetchByStatus }
+  async function setTags(characterId: number, tags: string[]) {
+    await window.api.collection.setTags(characterId, tags)
+  }
+
+  async function toggleBacking(characterId: number) {
+    await window.api.collection.toggleBacking(characterId)
+  }
+
+  return { characters, stats, loading, fetchList, fetchStats, addCharacter, removeCharacter, fetchByStatus, setTags, toggleBacking }
 })

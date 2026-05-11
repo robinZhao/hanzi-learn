@@ -38,10 +38,19 @@ const api = {
       ipcRenderer.invoke('collection:listByStatus', status, sortBy, sortDir, limit, offset),
     export: () => ipcRenderer.invoke('collection:export'),
     import: (data: any, mode: 'merge' | 'replace') =>
-      ipcRenderer.invoke('collection:import', data, mode)
+      ipcRenderer.invoke('collection:import', data, mode),
+    importXlsx: (filePath: string) => ipcRenderer.invoke('collection:importXlsx', filePath),
+    exportXlsx: () => ipcRenderer.invoke('collection:exportXlsx'),
+    setTags: (characterId: number, tags: string[]) =>
+      ipcRenderer.invoke('collection:setTags', characterId, tags),
+    toggleBacking: (characterId: number) =>
+      ipcRenderer.invoke('collection:toggleBacking', characterId),
+    listByTag: (tag: string, sortBy?: string, sortDir?: string, limit?: number, offset?: number) =>
+      ipcRenderer.invoke('collection:listByTag', tag, sortBy, sortDir, limit, offset)
   },
   learning: {
     getDueCards: (limit?: number) => ipcRenderer.invoke('learning:getDueCards', limit),
+    getBackingCards: (limit?: number) => ipcRenderer.invoke('learning:getBackingCards', limit),
     submitReview: (userCharId: number, rating: number) =>
       ipcRenderer.invoke('learning:submitReview', userCharId, rating),
     markAsKnown: (userCharId: number) =>

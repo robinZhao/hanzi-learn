@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useSettingsStore } from './settings'
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
 
 export const useLearningStore = defineStore('learning', () => {
   const cards = ref<any[]>([])
@@ -8,7 +17,7 @@ export const useLearningStore = defineStore('learning', () => {
   const flipped = ref(false)
   const sessionResults = ref<{ rating: number }[]>([])
   const loading = ref(false)
-  const sessionMode = ref<'due' | 'learned' | 'random'>('due')
+  const sessionMode = ref<'due' | 'learned' | 'random' | 'backing'>('due')
 
   const currentCard = computed(() => cards.value[currentIndex.value] || null)
   const progress = computed(() => ({
@@ -18,7 +27,7 @@ export const useLearningStore = defineStore('learning', () => {
   }))
 
   async function startSession(
-    mode: 'due' | 'learned' | 'random' = 'due',
+    mode: 'due' | 'learned' | 'random' | 'backing' = 'due',
     options?: { limit?: number; randomLevel?: string; randomSource?: string }
   ) {
     loading.value = true
@@ -28,14 +37,34 @@ export const useLearningStore = defineStore('learning', () => {
         cards.value = await window.api.learning.getDueCards(options?.limit)
       } else if (mode === 'learned') {
         cards.value = await window.api.learning.getAllLearned(options?.limit)
+      } else if (mode === 'backing') {
+        cards.value = await window.api.learning.getBackingCards(options?.limit)
       } else if (mode === 'random') {
         const settings = useSettingsStore()
-        const chars = await window.api.learning.getRandomCharacters(
-          (options?.randomLevel as any) || 'beginner',
-          options?.limit,
-          options?.randomSource,
-          !settings.showAllCharacters
-        )
+        const level = (options?.randomLevel as any) || 'beginner'
+        const source = options?.randomSource || 'all'
+
+        let chars: any[]
+        // When source is 'collected' and level is a classification, fetch from that classification
+        if (source === 'collected' && ['learning', 'mastered', 'standby'].includes(level)) {
+          let list: any[]
+          if (level === 'learning') {
+            list = await window.api.collection.listByStatus('unknown', 'added_at', 'DESC', 99999)
+          } else if (level === 'mastered') {
+            list = await window.api.collection.listByStatus('known', 'added_at', 'DESC', 99999)
+          } else {
+            list = await window.api.collection.listByStatus('standby', 'added_at', 'DESC', 99999)
+          }
+          // Shuffle and limit
+          chars = shuffleArray(list).slice(0, options?.limit || 20)
+        } else {
+          chars = await window.api.learning.getRandomCharacters(
+            level,
+            options?.limit,
+            source,
+            !settings.showAllCharacters
+          )
+        }
         cards.value = chars.map((c: any) => ({
           id: null,
           character_id: c.id,
@@ -61,20 +90,26 @@ export const useLearningStore = defineStore('learning', () => {
     }
   }
 
+  async function advanceWithFlip() {
+    if (flipped.value) {
+      flipped.value = false
+      await nextTick()
+      await new Promise(r => setTimeout(r, 500))
+    }
+    currentIndex.value++
+  }
+
   function flipCard() {
     flipped.value = !flipped.value
   }
 
-  async function submitRating(rating: number) {
+  async function skipCard() {
     const card = currentCard.value
     if (!card) return
-
     if (!card._isRandom) {
-      await window.api.learning.submitReview(card.id, rating)
+      await window.api.learning.submitReview(card.id, 1)
     }
-    sessionResults.value.push({ rating })
-    flipped.value = false
-    currentIndex.value++
+    sessionResults.value.push({ rating: 1 })
   }
 
   async function knowCard() {
@@ -84,8 +119,6 @@ export const useLearningStore = defineStore('learning', () => {
       await window.api.learning.markAsKnown(card.id)
     }
     sessionResults.value.push({ rating: 5 })
-    flipped.value = false
-    currentIndex.value++
   }
 
   // Mark all random characters as learned after session
@@ -142,7 +175,8 @@ export const useLearningStore = defineStore('learning', () => {
     progress,
     startSession,
     flipCard,
-    submitRating,
+    advanceWithFlip,
+    skipCard,
     knowCard,
     addToSessionQueue,
     finalizeRandomSession,

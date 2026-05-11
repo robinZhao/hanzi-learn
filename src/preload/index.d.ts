@@ -29,10 +29,16 @@ interface CollectionAPI {
   getStats(): Promise<any>
   updateNotes(characterId: number, notes: string): Promise<void>
   listByStatus(status: string, sortBy?: string, sortDir?: string, limit?: number, offset?: number): Promise<any[]>
+  importXlsx(filePath: string): Promise<any>
+  exportXlsx(): Promise<string>
+  setTags(characterId: number, tags: string[]): Promise<void>
+  toggleBacking(characterId: number): Promise<void>
+  listByTag(tag: string, sortBy?: string, sortDir?: string, limit?: number, offset?: number): Promise<any[]>
 }
 
 interface LearningAPI {
   getDueCards(limit?: number): Promise<any[]>
+  getBackingCards(limit?: number): Promise<any[]>
   submitReview(userCharId: number, rating: number): Promise<any>
   markAsKnown(userCharId: number): Promise<any>
   getAllLearned(limit?: number): Promise<any[]>

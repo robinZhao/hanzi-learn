@@ -5,6 +5,10 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { initDatabase } from './database'
 
 function createWindow(): void {
+  const iconPath = is.dev
+    ? join(__dirname, '../../build/icon.ico')
+    : join(process.resourcesPath, 'build/icon.ico')
+
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -13,6 +17,7 @@ function createWindow(): void {
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
+    icon: iconPath,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

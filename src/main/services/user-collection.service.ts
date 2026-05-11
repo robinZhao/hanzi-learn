@@ -15,14 +15,15 @@ export interface CollectedCharacter {
   review_count: number
   notes: string | null
   added_at: string
+  is_known?: number
+  tags?: string | null
+  is_backing?: number
 }
 
 export interface CollectionStats {
   total: number
-  new_count: number
   learning: number
   mastered: number
-  due_today: number
 }
 
 export function addToCollection(characterId: number): void {
@@ -79,7 +80,8 @@ export function listCollection(
     .prepare(
       `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
               c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
-              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
        FROM user_characters uc
        JOIN characters c ON uc.character_id = c.id
        WHERE 1=1 ${where}
@@ -89,29 +91,15 @@ export function listCollection(
     .all(...params) as CollectedCharacter[]
 }
 
+// 简化：学习中 = 全部收藏，已掌握 = 已标记认识
 export function getCollectionStats(): CollectionStats {
   const db = getDb()
   const total = (db.prepare('SELECT COUNT(*) as c FROM user_characters').get() as any).c
-  const new_count = (
-    db.prepare('SELECT COUNT(*) as c FROM user_characters WHERE familiarity = 0').get() as any
-  ).c
-  const learning = (
-    db
-      .prepare('SELECT COUNT(*) as c FROM user_characters WHERE familiarity BETWEEN 1 AND 3')
-      .get() as any
-  ).c
   const mastered = (
-    db.prepare('SELECT COUNT(*) as c FROM user_characters WHERE familiarity >= 4').get() as any
+    db.prepare('SELECT COUNT(*) as c FROM user_characters WHERE is_known = 1 OR familiarity >= 4').get() as any
   ).c
-  const due_today = (
-    db
-      .prepare(
-        "SELECT COUNT(*) as c FROM user_characters WHERE next_review <= datetime('now')"
-      )
-      .get() as any
-  ).c
-
-  return { total, new_count, learning, mastered, due_today }
+  const backing = (db.prepare('SELECT COUNT(*) as c FROM user_characters WHERE is_backing = 1').get() as any).c
+  return { total, learning: total - mastered - backing, mastered }
 }
 
 export function updateNotes(characterId: number, notes: string): void {
@@ -119,22 +107,25 @@ export function updateNotes(characterId: number, notes: string): void {
   db.prepare('UPDATE user_characters SET notes = ? WHERE character_id = ?').run(notes, characterId)
 }
 
+// 简化：返回所有待学习卡片，排除备用字
 export function getDueCards(limit = 30): CollectedCharacter[] {
   const db = getDb()
   return db
     .prepare(
       `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
               c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
-              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
        FROM user_characters uc
        JOIN characters c ON uc.character_id = c.id
-       WHERE uc.next_review <= datetime('now') OR uc.familiarity = 0
-       ORDER BY uc.familiarity ASC, uc.next_review ASC
+       WHERE (uc.is_known IS NULL OR uc.is_known != 1) AND uc.is_backing = 0
+       ORDER BY uc.added_at ASC
        LIMIT ?`
     )
     .all(limit) as CollectedCharacter[]
 }
 
+// 简化：认识/不认识都只增加 review_count，不计算间隔
 export function submitReview(
   userCharId: number,
   rating: number
@@ -143,57 +134,34 @@ export function submitReview(
   const uc = db.prepare('SELECT * FROM user_characters WHERE id = ?').get(userCharId) as any
   if (!uc) throw new Error('Card not found')
 
-  let familiarity = uc.familiarity
-  let intervalMinutes: number
-
-  switch (rating) {
-    case 1: // Again
-      familiarity = 0
-      intervalMinutes = 1
-      break
-    case 2: // Hard
-      familiarity = Math.max(0, familiarity - 1)
-      intervalMinutes = 10
-      break
-    case 3: // Good
-      familiarity = Math.min(5, familiarity + 1)
-      intervalMinutes = Math.pow(2.5, familiarity) * 60
-      break
-    case 4: // Easy
-      familiarity = Math.min(5, familiarity + 2)
-      intervalMinutes = Math.pow(4, familiarity) * 60
-      break
-    default:
-      familiarity = uc.familiarity
-      intervalMinutes = 60
-  }
-
-  const nextReview = new Date(Date.now() + intervalMinutes * 60000).toISOString()
+  // 标记认识
+  const isKnown = rating >= 4 ? 1 : (uc.is_known || 0)
+  const familiarity = isKnown ? 5 : Math.min(uc.familiarity + (rating >= 3 ? 1 : 0), 4)
 
   db.prepare(
-    `UPDATE user_characters SET familiarity = ?, next_review = ?, review_count = review_count + 1
+    `UPDATE user_characters SET familiarity = ?, is_known = ?, review_count = review_count + 1
      WHERE id = ?`
-  ).run(familiarity, nextReview, userCharId)
+  ).run(familiarity, isKnown, userCharId)
 
   db.prepare(
     'INSERT INTO review_history (user_char_id, rating) VALUES (?, ?)'
   ).run(userCharId, rating)
 
-  return { familiarity, next_review: nextReview }
+  return { familiarity, next_review: uc.next_review }
 }
 
 export function markAsKnown(userCharId: number): { familiarity: number; next_review: string } {
   const db = getDb()
-  const now = new Date(Date.now() + 365 * 24 * 60 * 60000).toISOString()
   db.prepare(
-    'UPDATE user_characters SET familiarity = 5, is_known = 1, next_review = ?, review_count = review_count + 1 WHERE id = ?'
-  ).run(now, userCharId)
+    'UPDATE user_characters SET familiarity = 5, is_known = 1, review_count = review_count + 1 WHERE id = ?'
+  ).run(userCharId)
   db.prepare('INSERT INTO review_history (user_char_id, rating) VALUES (?, 4)').run(userCharId)
-  return { familiarity: 5, next_review: now }
+  return { familiarity: 5, next_review: '' }
 }
 
+// 简化：学习中 = review_count = 0（没学过），已掌握 = is_known = 1
 export function listCollectionByStatus(
-  status: 'learned' | 'known' | 'unknown',
+  status: 'learned' | 'known' | 'unknown' | 'standby',
   sortBy = 'added_at',
   sortDir = 'DESC',
   limit = 100,
@@ -206,10 +174,13 @@ export function listCollectionByStatus(
       where = 'AND uc.review_count > 0'
       break
     case 'known':
-      where = 'AND (uc.is_known = 1 OR uc.familiarity >= 4)'
+      where = 'AND uc.is_known = 1 OR uc.familiarity >= 4'
       break
     case 'unknown':
-      where = 'AND uc.familiarity <= 1 AND uc.review_count = 0'
+      where = 'AND (uc.is_known IS NULL OR uc.is_known != 1) AND uc.is_backing = 0'
+      break
+    case 'standby':
+      where = 'AND uc.is_backing = 1'
       break
   }
 
@@ -222,7 +193,8 @@ export function listCollectionByStatus(
     .prepare(
       `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
               c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
-              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
        FROM user_characters uc
        JOIN characters c ON uc.character_id = c.id
        WHERE 1=1 ${where}
@@ -232,17 +204,70 @@ export function listCollectionByStatus(
     .all(limit, offset) as CollectedCharacter[]
 }
 
+export function setTags(characterId: number, tags: string[]): void {
+  const db = getDb()
+  const tagsJson = tags.length > 0 ? JSON.stringify(tags) : null
+  db.prepare('UPDATE user_characters SET tags = ? WHERE character_id = ?').run(tagsJson, characterId)
+}
+
+export function toggleBacking(characterId: number): void {
+  const db = getDb()
+  db.prepare(
+    'UPDATE user_characters SET is_backing = 1 - COALESCE(is_backing, 0) WHERE character_id = ?'
+  ).run(characterId)
+}
+
+export function listByTag(tag: string, sortBy = 'added_at', sortDir = 'DESC', limit = 100, offset = 0): CollectedCharacter[] {
+  const db = getDb()
+  const allowedSort = ['added_at', 'pinyin', 'stroke_count', 'frequency', 'familiarity']
+  const col = allowedSort.includes(sortBy) ? sortBy : 'added_at'
+  const dir = sortDir === 'ASC' ? 'ASC' : 'DESC'
+  const orderField = ['pinyin', 'stroke_count', 'frequency'].includes(col) ? `c.${col}` : `uc.${col}`
+
+  return db
+    .prepare(
+      `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
+              c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
+       FROM user_characters uc
+       JOIN characters c ON uc.character_id = c.id
+       WHERE uc.tags LIKE ?
+       ORDER BY ${orderField} ${dir} NULLS LAST
+       LIMIT ? OFFSET ?`
+    )
+    .all(`%"${tag}"%`, limit, offset) as CollectedCharacter[]
+}
+
+export function getBackingCards(limit = 30): CollectedCharacter[] {
+  const db = getDb()
+  return db
+    .prepare(
+      `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
+              c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
+       FROM user_characters uc
+       JOIN characters c ON uc.character_id = c.id
+       WHERE uc.is_backing = 1
+       ORDER BY uc.added_at ASC
+       LIMIT ?`
+    )
+    .all(limit) as CollectedCharacter[]
+}
+
 export function getAllLearnedCards(limit = 50): CollectedCharacter[] {
   const db = getDb()
   return db
     .prepare(
       `SELECT uc.id, uc.character_id, c.character, c.pinyin, c.stroke_count,
               c.radical_id, c.structure, c.frequency, c.definition, c.cn_definition,
-              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at
+              uc.familiarity, uc.next_review, uc.review_count, uc.notes, uc.added_at,
+              uc.tags, uc.is_backing
        FROM user_characters uc
        JOIN characters c ON uc.character_id = c.id
-       WHERE uc.review_count > 0 OR uc.familiarity > 0
-       ORDER BY uc.familiarity ASC, uc.next_review ASC
+       WHERE uc.review_count > 0
+       ORDER BY uc.added_at DESC
        LIMIT ?`
     )
     .all(limit) as CollectedCharacter[]
@@ -253,12 +278,11 @@ export function getRandomCharacters(
   limit = 20,
   source = 'all',
   gb2312Only = true
-): CharacterSummary[] {
+): any[] {
   const db = getDb()
   const gbFilter = gb2312Only ? ' AND c.is_gb2312 = 1' : ''
   let freqFilter: string
 
-  // When source is 'collected', ignore difficulty filter and use all collected chars
   if (source === 'collected') {
     freqFilter = '1=1'
   } else {
@@ -277,12 +301,10 @@ export function getRandomCharacters(
     }
   }
 
-  // If source is 'collected', only pick from user's collected characters
   const joinClause = source === 'collected'
     ? 'INNER JOIN user_characters uc ON uc.character_id = c.id'
     : ''
 
-  // Use subquery to avoid slow ORDER BY RANDOM() on large table
   const candidates = db
     .prepare(
       `SELECT c.id, c.character, c.pinyin, c.stroke_count, c.radical_id,
@@ -295,7 +317,6 @@ export function getRandomCharacters(
     )
     .all() as any[]
 
-  // Shuffle in JS
   for (let i = candidates.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
@@ -369,6 +390,8 @@ export interface ExportData {
     next_review: string
     review_count: number
     notes: string | null
+    tags: string[] | null
+    is_backing: number
   }>
 }
 
@@ -378,7 +401,8 @@ export function exportCollection(): ExportData {
     .prepare(
       `SELECT c.character, c.pinyin, c.stroke_count, c.radical_id, c.structure,
               c.frequency, c.definition,
-              uc.familiarity, uc.is_known, uc.next_review, uc.review_count, uc.notes
+              uc.familiarity, uc.is_known, uc.next_review, uc.review_count, uc.notes,
+              uc.tags, uc.is_backing
        FROM user_characters uc
        JOIN characters c ON uc.character_id = c.id
        ORDER BY uc.added_at ASC`
@@ -401,6 +425,8 @@ export function exportCollection(): ExportData {
       next_review: r.next_review,
       review_count: r.review_count,
       notes: r.notes,
+      tags: r.tags ? JSON.parse(r.tags) : null,
+      is_backing: r.is_backing ?? 0,
     })),
   }
 }
@@ -430,11 +456,11 @@ export function importCollection(
   }
 
   const insertChar = db.prepare(
-    `INSERT INTO user_characters (character_id, familiarity, is_known, next_review, review_count, notes)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO user_characters (character_id, familiarity, is_known, next_review, review_count, notes, tags, is_backing)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const updateChar = db.prepare(
-    `UPDATE user_characters SET familiarity = ?, is_known = ?, next_review = ?, review_count = ?, notes = ?
+    `UPDATE user_characters SET familiarity = ?, is_known = ?, next_review = ?, review_count = ?, notes = ?, tags = ?, is_backing = ?
      WHERE character_id = ?`
   )
   const findCharId = db.prepare('SELECT id FROM characters WHERE character = ?')
@@ -461,6 +487,8 @@ export function importCollection(
             item.next_review,
             item.review_count,
             item.notes,
+            item.tags ? JSON.stringify(item.tags) : null,
+            item.is_backing ?? 0,
             characterId
           )
           result.updated++
@@ -471,7 +499,9 @@ export function importCollection(
             item.is_known ?? 0,
             item.next_review,
             item.review_count,
-            item.notes
+            item.notes,
+            item.tags ? JSON.stringify(item.tags) : null,
+            item.is_backing ?? 0
           )
           result.added++
         }

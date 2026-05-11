@@ -6,17 +6,24 @@
         <h1>开始学习</h1>
 
         <el-tabs v-model="sessionTab" class="session-tabs">
-          <el-tab-pane label="待复习" name="due">
-            <p class="tab-desc">复习到期和未学过的收藏汉字</p>
+          <el-tab-pane label="学习中" name="due">
+            <p class="tab-desc">学习学习中状态的汉字</p>
             <el-button type="primary" size="large" @click="start('due')" :loading="store.loading">
-              开始复习 ({{ dueCount }})
+              开始学习 ({{ dueCount }})
             </el-button>
           </el-tab-pane>
 
-          <el-tab-pane label="已学回顾" name="learned">
-            <p class="tab-desc">浏览回顾已学过的汉字</p>
+          <el-tab-pane label="备用字" name="backing">
+            <p class="tab-desc">学习备用字库中的汉字</p>
+            <el-button type="primary" size="large" @click="start('backing')" :loading="store.loading">
+              开始学习 ({{ backingCount }})
+            </el-button>
+          </el-tab-pane>
+
+          <el-tab-pane label="已掌握" name="learned">
+            <p class="tab-desc">浏览回顾已掌握的汉字</p>
             <el-button type="primary" size="large" @click="start('learned')">
-              浏览已学汉字
+              浏览已掌握汉字 ({{ masteredCount }})
             </el-button>
           </el-tab-pane>
 
@@ -27,10 +34,13 @@
                 <el-option label="全库" value="all" />
                 <el-option label="已收藏" value="collected" />
               </el-select>
-              <el-select v-if="randomSource === 'all'" v-model="selectedLevel" size="default" class="level-select">
-                <el-option label="初级" value="beginner" />
-                <el-option label="中级" value="intermediate" />
-                <el-option label="高级" value="advanced" />
+              <el-select v-model="selectedLevel" size="default" class="level-select">
+                <el-option v-if="randomSource === 'all'" label="初级" value="beginner" />
+                <el-option v-if="randomSource === 'all'" label="中级" value="intermediate" />
+                <el-option v-if="randomSource === 'all'" label="高级" value="advanced" />
+                <el-option v-if="randomSource === 'collected'" label="已掌握" value="mastered" />
+                <el-option v-if="randomSource === 'collected'" label="学习中" value="learning" />
+                <el-option v-if="randomSource === 'collected'" label="备用" value="standby" />
               </el-select>
               <el-input-number v-model="randomCount" :min="10" :max="50" :step="5" size="default" />
               <el-button type="primary" size="large" @click="startRandom">开始测验</el-button>
@@ -69,7 +79,7 @@
         <div class="done-stats">
           <div class="done-stat">
             <div class="done-number">{{ store.sessionResults.length }}</div>
-            <div class="done-label">已复习</div>
+            <div class="done-label">已学习</div>
           </div>
           <div class="done-stat">
             <div class="done-number">{{ goodCount }}</div>
@@ -125,51 +135,54 @@
         </div>
       </div>
 
-      <!-- User sentence section -->
-      <div class="user-sentence-section" v-if="store.flipped">
-        <h4>造句练习</h4>
-        <el-input
-          v-model="newSentence"
-          type="textarea"
-          :rows="2"
-          :placeholder="'用「' + store.currentCard.character + '」造句...'"
-          @keydown.enter.ctrl="submitUserSentence"
-        />
-        <el-button
-          type="primary"
-          size="small"
-          @click="submitUserSentence"
-          :disabled="!newSentence.trim()"
-          style="margin-top: 8px"
-        >
-          保存造句
-        </el-button>
+      <!-- Bottom controls: user sentences + buttons pinned to bottom -->
+      <div class="bottom-area">
+        <div class="bottom-fill">
+          <div class="user-sentence-section" v-if="store.flipped">
+            <h4>造句练习</h4>
+            <el-input
+              v-model="newSentence"
+              type="textarea"
+              :rows="2"
+              :placeholder="'用「' + store.currentCard.character + '」造句...'"
+              @keydown.enter.ctrl="submitUserSentence"
+            />
+            <el-button
+              type="primary"
+              size="small"
+              @click="submitUserSentence"
+              :disabled="!newSentence.trim()"
+              style="margin-top: 8px"
+            >
+              保存造句
+            </el-button>
 
-        <div v-if="userSentences.length" class="user-sentence-list">
-          <div v-for="s in userSentences" :key="s.id" class="user-sentence-item">
-            <span class="sentence-text">{{ s.sentence }}</span>
-            <el-button size="small" text type="danger" @click.stop="deleteSentence(s.id)">删除</el-button>
+            <div v-if="userSentences.length" class="user-sentence-list">
+              <div v-for="s in userSentences" :key="s.id" class="user-sentence-item">
+                <span class="sentence-text">{{ s.sentence }}</span>
+                <el-button size="small" text type="danger" @click.stop="deleteSentence(s.id)">删除</el-button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-
-      <!-- Rating Buttons -->
-      <div class="rating-buttons" v-if="store.flipped">
-        <el-button type="success" size="large" @click="handleKnow">认识</el-button>
-        <el-button :type="isCollected ? 'warning' : 'primary'" size="large" @click="handleCollect">
-          {{ isCollected ? '已收藏' : '收藏' }}
-        </el-button>
-        <el-button type="danger" @click="rate(1)">再来<br/><small>1</small></el-button>
-        <el-button type="warning" @click="rate(2)">困难<br/><small>2</small></el-button>
-        <el-button type="primary" @click="rate(3)">一般<br/><small>3</small></el-button>
-        <el-button type="info" @click="rate(4)">简单<br/><small>4</small></el-button>
+        <div class="rating-buttons">
+          <el-button type="success" size="large" @click="handleKnow">认识</el-button>
+          <el-button :type="isCollected ? 'warning' : 'primary'" size="large" @click="handleCollect">
+            {{ isCollected ? '已收藏' : '收藏' }}
+          </el-button>
+          <el-button :type="isYiCuo ? 'danger' : 'info'" size="large" @click="toggleYiCuo">
+            {{ isYiCuo ? '易错' : '标记易错' }}
+          </el-button>
+          <el-button type="danger" size="large" @click="skipCard">下一个</el-button>
+          <el-button size="large" @click="restart">返回</el-button>
+        </div>
       </div>
     </template>
 
     <!-- Empty State -->
     <template v-else>
       <div class="start-screen">
-        <h1>没有待复习的汉字</h1>
+        <h1>没有待学习的汉字</h1>
         <p>去收藏更多汉字吧!</p>
         <el-button @click="$router.push('/dictionary')">查字</el-button>
       </div>
@@ -187,9 +200,9 @@ const store = useLearningStore()
 const settingsStore = useSettingsStore()
 const started = ref(false)
 const sessionTab = ref('due')
-const selectedLevel = ref('beginner')
+const selectedLevel = ref('mastered')
 const randomCount = ref(20)
-const randomSource = ref('all')
+const randomSource = ref('collected')
 const addQuery = ref('')
 const addResults = ref<any[]>([])
 const newSentence = ref('')
@@ -197,9 +210,12 @@ const currentWords = ref<any[]>([])
 const systemSentences = ref<any[]>([])
 const userSentences = ref<any[]>([])
 const isCollected = ref(false)
+const isYiCuo = ref(false)
 let addSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const dueCount = ref(0)
+const backingCount = ref(0)
+const masteredCount = ref(0)
 
 const goodCount = computed(() =>
   store.sessionResults.filter((r) => r.rating >= 3).length
@@ -225,9 +241,12 @@ function getTone(pinyin: string): number {
   return 5
 }
 
-async function fetchDueCount() {
+async function fetchCounts() {
   const stats = await window.api.collection.getStats()
-  dueCount.value = stats.due_today
+  masteredCount.value = stats.mastered
+  dueCount.value = stats.learning
+  const allBacking = await window.api.learning.getBackingCards(99999)
+  backingCount.value = allBacking.length
 }
 
 function onAddSearch() {
@@ -250,6 +269,13 @@ async function addToSession(characterId: number) {
 
 async function handleKnow() {
   await store.knowCard()
+  await store.advanceWithFlip()
+  await loadCardExtras()
+}
+
+async function skipCard() {
+  await store.skipCard()
+  await store.advanceWithFlip()
   await loadCardExtras()
 }
 
@@ -263,13 +289,27 @@ async function handleCollect() {
   }
 }
 
+async function toggleYiCuo() {
+  if (!store.currentCard) return
+  const charId = store.currentCard.character_id
+  if (isYiCuo.value) {
+    await window.api.collection.setTags(charId, [])
+    isYiCuo.value = false
+    ElMessage.info('已取消易错标记')
+  } else {
+    await window.api.collection.setTags(charId, ['易错'])
+    isYiCuo.value = true
+    ElMessage.success('已标记为易错')
+  }
+}
+
 function start(mode: 'due' | 'learned') {
   store.startSession(mode)
   started.value = true
 }
 
 function startRandom() {
-  const level = randomSource.value === 'collected' ? 'advanced' : selectedLevel.value
+  const level = randomSource.value === 'collected' ? selectedLevel.value : selectedLevel.value
   store.startSession('random', { limit: randomCount.value, randomLevel: level, randomSource: randomSource.value })
   started.value = true
 }
@@ -277,11 +317,6 @@ function startRandom() {
 function restart() {
   started.value = false
   sessionTab.value = 'due'
-}
-
-async function rate(rating: number) {
-  await store.submitRating(rating)
-  await loadCardExtras()
 }
 
 async function loadCardExtras() {
@@ -294,6 +329,9 @@ async function loadCardExtras() {
   currentWords.value = w.slice(0, 3)
   systemSentences.value = allSentences.filter((s: any) => !s.is_user).slice(0, 3)
   userSentences.value = allSentences.filter((s: any) => s.is_user)
+  isYiCuo.value = store.currentCard.tags
+    ? store.currentCard.tags.includes('易错')
+    : false
 }
 
 async function submitUserSentence() {
@@ -314,17 +352,17 @@ function onKeydown(e: KeyboardEvent) {
   if (e.code === 'Space') {
     e.preventDefault()
     store.flipCard()
-  } else if (store.flipped && ['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
-    rate(Number(e.code.replace('Digit', '')))
-  } else if (store.flipped && (e.code === 'Enter' || e.code === 'Digit5')) {
+  } else if (e.code === 'Enter') {
     e.preventDefault()
     handleKnow()
+  } else if (e.code === 'Digit1') {
+    skipCard()
   }
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
-  await fetchDueCount()
+  await fetchCounts()
 })
 
 onBeforeUnmount(() => {
@@ -336,6 +374,9 @@ watch(() => store.currentCard, async () => {
     await loadCardExtras()
     const charId = store.currentCard.character_id
     isCollected.value = await window.api.collection.isCollected(charId)
+    isYiCuo.value = store.currentCard.tags
+      ? store.currentCard.tags.includes('易错')
+      : false
   }
 })
 </script>
@@ -566,13 +607,20 @@ watch(() => store.currentCard, async () => {
 .tone-4 { color: var(--tone4); }
 .tone-5 { color: var(--tone5); }
 .user-sentence-section {
-  width: 100%;
-  max-width: 480px;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   padding: 16px;
   box-shadow: var(--shadow);
-  margin-bottom: 16px;
+}
+.bottom-area {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+.bottom-fill {
+  flex: 1;
 }
 .user-sentence-section h4 {
   font-size: 14px;
@@ -597,16 +645,14 @@ watch(() => store.currentCard, async () => {
 }
 .rating-buttons {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
+  margin-top: 12px;
 }
 .rating-buttons .el-button {
-  min-width: 72px;
-  height: 50px;
-}
-.rating-buttons small {
-  opacity: 0.7;
-  font-size: 11px;
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
 }
 </style>

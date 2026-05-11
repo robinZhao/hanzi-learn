@@ -5,19 +5,19 @@
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-number">{{ stats.total }}</div>
-        <div class="stat-label">已收藏</div>
+        <div class="stat-label">全部</div>
       </div>
       <div class="stat-card warning">
-        <div class="stat-number">{{ stats.due_today }}</div>
-        <div class="stat-label">待复习</div>
+        <div class="stat-number">{{ stats.learning }}</div>
+        <div class="stat-label">学习中</div>
       </div>
       <div class="stat-card success">
         <div class="stat-number">{{ stats.mastered }}</div>
         <div class="stat-label">已掌握</div>
       </div>
       <div class="stat-card info">
-        <div class="stat-number">{{ stats.learning }}</div>
-        <div class="stat-label">学习中</div>
+        <div class="stat-number">{{ stats.standby }}</div>
+        <div class="stat-label">备用</div>
       </div>
     </div>
 
@@ -50,8 +50,8 @@
     </div>
 
     <div class="actions-row">
-      <el-button type="primary" size="large" @click="$router.push('/learn')" :disabled="stats.due_today === 0">
-        开始复习 ({{ stats.due_today }})
+      <el-button type="primary" size="large" @click="$router.push('/learn')">
+        开始学习
       </el-button>
       <el-button size="large" @click="$router.push('/dictionary')">
         查字
@@ -73,13 +73,20 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const collectionStore = useCollectionStore()
 const settingsStore = useSettingsStore()
-const stats = ref({ total: 0, new_count: 0, learning: 0, mastered: 0, due_today: 0 })
+const stats = ref({ total: 0, learning: 0, mastered: 0, standby: 0 })
 const quickInput = ref('')
 const searchResults = ref<any[]>([])
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
-  stats.value = await window.api.collection.getStats()
+  const s = await window.api.collection.getStats()
+  const allBacking = await window.api.learning.getBackingCards(99999)
+  stats.value = {
+    total: s.total,
+    learning: s.learning,
+    mastered: s.mastered,
+    standby: allBacking.length
+  }
 })
 
 function onQuickSearch() {

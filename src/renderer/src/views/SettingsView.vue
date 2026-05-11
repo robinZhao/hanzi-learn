@@ -21,8 +21,12 @@
     <div class="settings-section">
       <h3>学习设置</h3>
       <div class="setting-row">
-        <span>每次复习卡片数量</span>
+        <span>每次学习卡片数量</span>
         <el-input-number v-model="cardsPerSession" :min="5" :max="100" :step="5" size="small" />
+      </div>
+      <div class="setting-row">
+        <span>收藏页每页数量</span>
+        <el-input-number v-model="settingsStore.collectionPageSize" :min="10" :max="200" :step="10" size="small" @change="settingsStore.setCollectionPageSize($event as number)" />
       </div>
     </div>
 
@@ -63,7 +67,7 @@ const cardsPerSession = ref(30)
 
 async function clearCollection() {
   await ElMessageBox.confirm(
-    '此操作将清空所有收藏和复习记录，不可恢复，确定继续？',
+    '此操作将清空所有收藏和学习记录，不可恢复，确定继续？',
     '警告',
     { type: 'warning', confirmButtonText: '确定清空', cancelButtonText: '取消' }
   )

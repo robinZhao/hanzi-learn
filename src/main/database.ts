@@ -42,6 +42,7 @@ export function initDatabase(): void {
 }
 
 function runMigrations(database: Database.Database): void {
+  // 模板库已包含最新结构，此处保留以兼容老版本用户库升级
   try {
     database.exec('ALTER TABLE user_characters ADD COLUMN is_known INTEGER DEFAULT 0')
   } catch {
@@ -62,6 +63,16 @@ function runMigrations(database: Database.Database): void {
     database.exec('CREATE INDEX IF NOT EXISTS idx_us_char ON user_sentences(character_id)')
   } catch {
     // Index already exists
+  }
+  try {
+    database.exec('ALTER TABLE user_characters ADD COLUMN tags TEXT')
+  } catch {
+    // Column already exists
+  }
+  try {
+    database.exec('ALTER TABLE user_characters ADD COLUMN is_backing INTEGER DEFAULT 0')
+  } catch {
+    // Column already exists
   }
 }
 
@@ -138,6 +149,9 @@ function createTables(database: Database.Database): void {
       next_review TEXT DEFAULT (datetime('now')),
       review_count INTEGER DEFAULT 0,
       notes TEXT,
+      is_known INTEGER DEFAULT 0,
+      tags TEXT,
+      is_backing INTEGER DEFAULT 0,
       UNIQUE(character_id)
     );
 

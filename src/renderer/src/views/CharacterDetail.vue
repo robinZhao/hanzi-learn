@@ -17,7 +17,7 @@
       </div>
 
       <div class="meta-section">
-        <div class="pinyin-display">
+        <div class="pinyin-display" v-show="isLoaded">
           <span v-if="isMultiPinyin" class="multi-pinyin" v-html="formatPinyin(char.pinyin)"></span>
           <span v-else :class="'tone-' + getTone(char.pinyin)">{{ char.pinyin }}</span>
         </div>
@@ -36,6 +36,14 @@
           style="margin-top: 16px"
         >
           {{ collected ? '取消收藏' : '添加收藏' }}
+        </el-button>
+        <el-button
+          v-if="collected"
+          :type="isYiCuo ? 'warning' : 'default'"
+          @click="toggleYiCuo"
+          style="margin-top: 16px"
+        >
+          {{ isYiCuo ? '取消易错' : '标记易错' }}
         </el-button>
       </div>
     </div>
@@ -89,6 +97,8 @@ import { ref, onMounted, watch, onBeforeUnmount, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import HanziWriter from 'hanzi-writer'
 
+import { ElMessage } from 'element-plus'
+
 const route = useRoute()
 const router = useRouter()
 const props = defineProps<{ id?: string }>()
@@ -98,7 +108,9 @@ const words = ref<any[]>([])
 const sentences = ref<any[]>([])
 const similarChars = ref<any[]>([])
 const collected = ref(false)
+const isYiCuo = ref(false)
 const strokeEl = ref<HTMLElement | null>(null)
+const isLoaded = ref(false)
 let writer: any = null
 
 const isMultiPinyin = computed(() => {
@@ -156,6 +168,7 @@ function goBack() {
 }
 
 async function loadCharacter(id: number) {
+  isLoaded.value = false
   char.value = await window.api.character.getDetail(id)
   if (!char.value) return
 
@@ -170,8 +183,16 @@ async function loadCharacter(id: number) {
   similarChars.value = sc
   collected.value = c
 
+  // Check if marked as 易错
+  if (c) {
+    const list = await window.api.collection.list('added_at', 'DESC', undefined, undefined, 10000, 0)
+    const uc = list.find((item: any) => item.character_id === id)
+    isYiCuo.value = uc?.tags ? JSON.parse(uc.tags).includes('易错') : false
+  }
+
   await nextTick()
   initStrokeWriter()
+  isLoaded.value = true
 }
 
 function initStrokeWriter() {
@@ -208,9 +229,23 @@ async function toggleCollection() {
   if (collected.value) {
     await window.api.collection.remove(char.value.id)
     collected.value = false
+    isYiCuo.value = false
   } else {
     await window.api.collection.add(char.value.id)
     collected.value = true
+  }
+}
+
+async function toggleYiCuo() {
+  if (!char.value || !collected.value) return
+  if (isYiCuo.value) {
+    await window.api.collection.setTags(char.value.id, [])
+    isYiCuo.value = false
+    ElMessage.info('已取消易错标记')
+  } else {
+    await window.api.collection.setTags(char.value.id, ['易错'])
+    isYiCuo.value = true
+    ElMessage.success('已标记为易错')
   }
 }
 
